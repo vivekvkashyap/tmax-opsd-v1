@@ -19,12 +19,16 @@ for f in sorted(glob.glob(f'{DEMOS}/*.md')):
         continue
     rows.append({'task_id': os.path.basename(f)[:-3], 'demo': text})
 
-out = os.path.join(REPO, 'data', 'demos.parquet')
-pq.write_table(pa.Table.from_pylist(rows), out)
+# Canonical location is INSIDE the package so it ships in the wheel / Hub env
+# (build.py's load_demos reads it there). Also mirror to data/ for local builds.
+table = pa.Table.from_pylist(rows)
+pkg_out = os.path.join(REPO, 'tmax_opsd_v1', 'demos.parquet')
+pq.write_table(table, pkg_out)
+pq.write_table(table, os.path.join(REPO, 'data', 'demos.parquet'))
 
 ids_path = os.path.join(REPO, 'data', 'hinted_task_ids.txt')
 with open(ids_path, 'w') as fh:
     fh.write('\n'.join(r['task_id'] for r in rows) + '\n')
 
-print(f'assembled {len(rows)} hints -> data/demos.parquet')
+print(f'assembled {len(rows)} hints -> tmax_opsd_v1/demos.parquet (+ data/demos.parquet)')
 print(f'wrote {len(rows)} task_ids -> data/hinted_task_ids.txt')

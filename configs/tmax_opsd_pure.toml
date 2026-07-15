@@ -5,20 +5,23 @@
 # reverse-KL to that demo-conditioned policy is the per-token loss. No reward,
 # no frozen teacher — only the policy's own inference server is needed.
 #
-# Launch (from the prime-rl repo, policy server auto-launches):
+# Launch (from the prime-rl repo; the policy server auto-launches):
 #   uv run rl @ <path>/configs/tmax_opsd_pure.toml --output-dir outputs/opsd
 #
 # NOTE: rollouts still run each task in its per-task Docker sandbox, so this
 # needs the sandbox backend (prime runtime or docker) — it is NOT text-only.
+# Data note: no data_path is set, so the env builds tasks.parquet lazily into
+# its cache ($TMAX_OPSD_DATA_DIR) with the hints that ship inside the package.
 
-max_steps = 300          # validation length; the TMax paper runs 500 for full RL. tune.
-seq_len = 8192           # terminal traces are long/multi-turn. lower if OOM. tune.
+max_steps = 300          # RL steps. TMax paper uses 500; 300 is a fine validation. tune.
+seq_len = 32768          # TMax paper: 65536 for Qwen 3.5 (32768 train / 40960 eval to save
+                         # memory). 32768 is the practical choice; raise toward 65536 if VRAM allows.
 
 [model]
-# TMax paper's RL models are the Qwen 3.5 family (headline: Qwen 3.5 9B -> TMAX-9B;
-# 4B/2B reported too). Plain "Qwen/Qwen3.5-4B" (post-trained) is used here: it
-# tool-calls out of the box and matches your existing 0.8B config. To reproduce
-# the paper exactly, start from the BASE model + an SFT warm-start, then RL.
+# TMax RL models are the Qwen 3.5 family (headline: Qwen 3.5 9B -> TMAX-9B; 4B/2B
+# reported too). Plain "Qwen/Qwen3.5-4B" (post-trained) tool-calls out of the box
+# and matches your existing 0.8B config. To reproduce the paper exactly, start
+# from "Qwen/Qwen3.5-4B-Base" + an SFT warm-start, then RL.
 name = "Qwen/Qwen3.5-4B"
 
 [wandb]
@@ -26,40 +29,40 @@ project = "tmax-opsd"
 name = "pure-opsd-qwen3.5-4b"
 
 [orchestrator]
-batch_size = 32          # examples per step. tune to your GPU/throughput.
-group_size = 1           # OPSD assigns no advantage -> 1 rollout/example (unlike GRPO).
+batch_size = 32          # examples per step. tune to GPU/throughput.
+group_size = 1           # OPSD assigns no advantage -> 1 rollout/example (GRPO uses 32).
 
 [orchestrator.algo]
 type = "opsd"
 demo_key = "demo"        # our TMaxData field holding the hint (default is "demonstration").
-# template = "..."       # optional: the system message wrapping {demonstration}. default is fine.
+# template = "..."       # optional wrapper for the hint system message; default is fine.
 
 [orchestrator.renderer]
 name = "qwen3"           # match the policy's chat/tool format. tune to the model.
 
 [orchestrator.train.sampling]
-max_completion_tokens = 2048   # per assistant turn. tune.
+max_completion_tokens = 16384    # TMax paper "Per-turn max tokens" = 16384 (Vanillux default). don't go low.
 
 [[orchestrator.train.env]]
 id = "tmax_opsd_v1"
 # require_demo drops the 4,642 un-hinted tasks so OPSD never hits a null demo.
-taskset = { require_demo = true, data_path = "REPLACE/with/abs/path/data/tasks.parquet", verifier_timeout = 600.0 }
-harness = { max_steps = 30, command_timeout = 120.0 }
+taskset = { require_demo = true, verifier_timeout = 600.0 }
+harness = { max_steps = 64, command_timeout = 120.0 }   # TMax "Max tool/env steps" = 64; bash timeout 120s.
 
 [orchestrator.eval]
 interval = 50            # eval every N steps; watch `solved` / `pass_fraction`.
 num_examples = 128
 
 [orchestrator.eval.sampling]
-max_completion_tokens = 2048
+max_completion_tokens = 16384
 
 [[orchestrator.eval.env]]
 id = "tmax_opsd_v1"
-taskset = { require_demo = true, data_path = "REPLACE/with/abs/path/data/tasks.parquet", verifier_timeout = 600.0 }
-harness = { max_steps = 30, command_timeout = 120.0 }
+taskset = { require_demo = true, verifier_timeout = 600.0 }
+harness = { max_steps = 64, command_timeout = 120.0 }
 
 [trainer.optim]
-lr = 1e-6                # conservative for a 4B. self_distill debug used 3e-6 on 0.6B. tune.
+lr = 1e-6                # TMax paper LR (constant schedule). tune.
 
 [inference]
 gpu_memory_utilization = 0.6   # raise for a real run. tune.

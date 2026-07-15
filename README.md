@@ -58,16 +58,15 @@ offensive-security-framed tasks that Claude's safety filter declines — those s
 
 ### Wiring hints into a training run
 
-Hint support is built in. `build.py` left-joins the hints into a `demo` column (from
-`data/demos.parquet`, assembled from `data/demos/*.md`), `TMaxData` carries the `demo` field, and
-the taskset config exposes `require_demo` to select only hinted tasks. OPSD reads the hint through
-its `demo_key`.
+Hint support is built in and **ships inside the package** (`tmax_opsd_v1/demos.parquet`), so a
+pulled/installed env carries the hints with no extra data step. `build.py` left-joins them into a
+`demo` column, `TMaxData` carries the `demo` field, and the taskset config exposes `require_demo`
+to select only hinted tasks. OPSD reads the hint through its `demo_key`.
 
-One-time: assemble the sidecar, then (re)build the dataset:
+Regenerate the sidecar only if you add/change hints:
 
 ```bash
-uv run python scripts/hintgen/assemble_demos.py   # data/demos/*.md -> data/demos.parquet
-# tasks.parquet is then built with the demo column on next load() (or via build.py)
+uv run python scripts/hintgen/assemble_demos.py   # data/demos/*.md -> tmax_opsd_v1/demos.parquet
 ```
 
 **Pure OPSD** — a ready config is at [`configs/tmax_opsd_pure.toml`](configs/tmax_opsd_pure.toml):

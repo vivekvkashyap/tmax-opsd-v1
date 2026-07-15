@@ -80,10 +80,13 @@ def build_rows(
 
 
 def load_demos(data_dir: Path) -> dict:
-    """Load the OPSD hint sidecar (data_dir/demos.parquet) as task_id -> demo.
-    Returns {} if absent (tasks then get demo=None; OPSD envs must select the
-    hinted subset). For a Hub-pulled env, host demos.parquet and fetch it here."""
-    demos_path = data_dir / DEMOS_FILENAME
+    """Load the OPSD hint sidecar as task_id -> demo. Prefers the copy shipped
+    inside the package (so a Hub-pulled / installed env carries the hints with
+    no extra data step), falling back to data_dir/demos.parquet for local
+    builds. Returns {} if neither exists (tasks then get demo=None; OPSD envs
+    must select the hinted subset via require_demo)."""
+    packaged = Path(__file__).parent / DEMOS_FILENAME
+    demos_path = packaged if packaged.exists() else data_dir / DEMOS_FILENAME
     if not demos_path.exists():
         return {}
     table = pq.read_table(demos_path, columns=["task_id", "demo"])
