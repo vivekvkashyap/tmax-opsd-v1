@@ -1,0 +1,7 @@
+This is a multi-service integration task (C TCP backend + Flask HTTP frontend). Build and wire each layer, then test end-to-end.
+
+1. Compile: `mkdir -p /app/bin && gcc -O2 -o /app/bin/sim_server /app/src/sim_server.c -lm` (link math lib since it likely uses `sin`/FFT-adjacent math).
+
+2. Fix `/app/api.py`'s `/analyze` handler: check the `Authorization` header equals exactly `Bearer biophysics2024` first, return 401 otherwise. Read `/app/data/<fasta_id>.fasta`'s first line, strip the leading `>` and whitespace, return 404 if the file is missing. Open a TCP socket to `127.0.0.1:9000`, send `<fasta_id>\n`, then read exactly 16384 bytes (loop `recv` until you have all of it — a single `recv` call may return less). Unpack those bytes as 64x64 little-endian float32 with `numpy.frombuffer(data, dtype='<f4').reshape(64,64)`. Compute `numpy.fft.fft2`, take `abs(...)**2` for power, zero out `[0,0]` before calling `argmax`/`unravel_index` to find the peak `[row, col]`. Return the JSON exactly as specified.
+
+3. Write `/app/start.sh` launching both processes in the background with `&` and a trailing `wait`, matching the required ports 9000/8080 and the auth token exactly — don't alter either. Test manually: start the script, curl the endpoint with and without the header, confirm 401/200 and a sane JSON body before finishing.
