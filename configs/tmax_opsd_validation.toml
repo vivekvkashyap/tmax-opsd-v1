@@ -1,0 +1,68 @@
+# Pure OPSD — CHEAP 3–5 STEP PIPELINE VALIDATION on Prime (all-Prime: GPU pod + Prime sandboxes).
+#
+# Goal: prove the OPSD path runs end-to-end and nothing breaks —
+#   rollout in a Prime sandbox -> prefill-score the rollout with the task's
+#   hint prepended as a system message -> reverse-KL (ref_kl) loss -> optim step -> eval.
+# This is NOT a faithful training run: several knobs are dialed DOWN to cut
+# cost/wall-clock (noted inline with the real value from tmax_opsd_pure.toml).
+#
+# Launch (on the GPU pod, from the prime-rl repo; the policy server auto-launches):
+#   uv run rl @ <path>/configs/tmax_opsd_validation.toml --output-dir outputs/opsd-val
+#
+# Requires on the pod: PRIME_API_KEY (for the sandbox runtime) and, if using
+# [wandb], WANDB_API_KEY. Rollouts run each task in a Prime sandbox (its own
+# per-task Docker image), so this needs network + a Prime API key.
+
+max_steps = 5            # 3–5 step validation. Real run: 300 (tmax_opsd_pure.toml).
+seq_len = 16384          # lighter than the faithful 32768, to fit 2xA100 comfortably and run fast.
+
+[model]
+name = "Qwen/Qwen3.5-4B"  # post-trained 4B; tool-calls out of the box.
+
+[wandb]
+project = "tmax-opsd"
+name = "opsd-validation-qwen3.5-4b"
+
+[orchestrator]
+batch_size = 8           # examples/step. Real run: 32. Small = cheaper validation.
+group_size = 1           # OPSD assigns no advantage -> 1 rollout/example.
+
+[orchestrator.algo]
+type = "opsd"
+demo_key = "demo"        # the TMaxData field holding this task's generated hint.
+
+[orchestrator.renderer]
+name = "qwen3"           # match the policy chat/tool format.
+
+[orchestrator.train.sampling]
+max_completion_tokens = 4096   # per-turn cap. Real run: 16384. Reduced to bound rollout cost.
+
+[[orchestrator.train.env]]
+# id INSIDE taskset -> verifiers dispatches to TMaxTasksetConfig (v1 path).
+# require_demo selects only the 9,959 hinted tasks so OPSD never hits a null demo.
+# runtime.type = "prime" -> each rollout runs in a Prime sandbox (all-Prime).
+taskset = { id = "tmax_opsd_v1", require_demo = true, verifier_timeout = 600.0 }
+harness = { max_steps = 32, command_timeout = 120.0, runtime = { type = "prime" } }  # real max_steps: 64.
+
+[orchestrator.eval]
+interval = 5             # run one eval at step 5 (end of the validation).
+num_examples = 8         # tiny eval set; watch `solved` / `pass_fraction`.
+
+[orchestrator.eval.sampling]
+max_completion_tokens = 4096
+
+[[orchestrator.eval.env]]
+taskset = { id = "tmax_opsd_v1", require_demo = true, verifier_timeout = 600.0 }
+harness = { max_steps = 32, command_timeout = 120.0, runtime = { type = "prime" } }
+
+[deployment]
+type = "single_node"
+num_train_gpus = 1       # 1 GPU trains, 1 serves inference -> 2x A100 80GB total.
+num_infer_gpus = 1
+
+[trainer.optim]
+lr = 1e-6                # TMax paper LR (constant).
+
+[inference]
+gpu_memory_utilization = 0.85
+max_model_len = 16384    # = seq_len; keeps the vLLM KV cache bounded on one A100.
