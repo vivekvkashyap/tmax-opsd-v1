@@ -1,6 +1,6 @@
 [project]
 name = "tmax-opsd-v1"
-version = "0.2.1"
+version = "0.2.3"
 description = "TMax terminal tasks as a verifiers-v1 environment with a TMax-faithful vanillux harness, built for OPSD experiments."
 tags = ["train", "eval", "terminal", "agent", "tmax", "opsd"]
 requires-python = ">=3.11,<3.14"

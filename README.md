@@ -77,8 +77,8 @@ type = "opsd"
 demo_key = "demo"
 
 [[orchestrator.train.env]]
-id = "tmax_opsd_v1"
-taskset = { require_demo = true, data_path = "…/data/tasks.parquet" }
+# the id goes INSIDE taskset (v1 dispatch); require_demo selects hinted tasks
+taskset = { id = "tmax_opsd_v1", require_demo = true }
 ```
 
 **RL + OPSD** — two env entries over the same env: a GRPO entry (all tasks) and an OPSD entry

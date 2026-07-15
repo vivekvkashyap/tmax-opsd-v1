@@ -12,6 +12,7 @@ ROWS = [
         "oracle_path": "/app/oracle" if i == 0 else None,
         "agent_entry_point": "/home/user/fixed" if i == 0 else None,
         "truth": "SECRET-TRUTH", "test_script": 'echo "1" > /logs/verifier/reward.txt',
+        "demo": None,
     }
     for i in range(3)
 ]

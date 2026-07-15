@@ -163,7 +163,12 @@ class TMaxTaskset(Taskset[TMaxTask, TMaxTasksetConfig]):
                 if line.strip()
             }
         wanted = set(self.config.tasks) if self.config.tasks is not None else None
-        if not Path(self.config.data_path).exists():
+        data_path = Path(self.config.data_path)
+        # Rebuild if absent, or if the cache predates the `demo` column (the
+        # builder always writes it now, so its absence means a stale cache —
+        # using it would silently drop every task under require_demo).
+        stale = data_path.exists() and "demo" not in pq.read_schema(data_path).names
+        if not data_path.exists() or stale:
             from tmax_opsd_v1.build import build_dataset
             build_dataset(self.config.data_path)
         table = pq.read_table(self.config.data_path)

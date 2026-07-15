@@ -44,9 +44,11 @@ name = "qwen3"           # match the policy's chat/tool format. tune to the mode
 max_completion_tokens = 16384    # TMax paper "Per-turn max tokens" = 16384 (Vanillux default). don't go low.
 
 [[orchestrator.train.env]]
-id = "tmax_opsd_v1"
+# v1 env: the id lives INSIDE the taskset block so verifiers dispatches to our
+# TMaxTasksetConfig (which accepts require_demo). A top-level `id` instead routes
+# through the legacy v0 bridge and the base TasksetConfig rejects require_demo.
 # require_demo drops the 4,642 un-hinted tasks so OPSD never hits a null demo.
-taskset = { require_demo = true, verifier_timeout = 600.0 }
+taskset = { id = "tmax_opsd_v1", require_demo = true, verifier_timeout = 600.0 }
 harness = { max_steps = 64, command_timeout = 120.0 }   # TMax "Max tool/env steps" = 64; bash timeout 120s.
 
 [orchestrator.eval]
@@ -57,8 +59,7 @@ num_examples = 128
 max_completion_tokens = 16384
 
 [[orchestrator.eval.env]]
-id = "tmax_opsd_v1"
-taskset = { require_demo = true, verifier_timeout = 600.0 }
+taskset = { id = "tmax_opsd_v1", require_demo = true, verifier_timeout = 600.0 }
 harness = { max_steps = 64, command_timeout = 120.0 }
 
 [trainer.optim]
