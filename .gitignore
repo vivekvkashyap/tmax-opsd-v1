@@ -33,3 +33,6 @@ data/tasks.parquet
 # Derived from data/demos/*.md by scripts/hintgen/assemble_demos.py
 data/demos.parquet
 data/hinted_task_ids.txt
+
+# Local validation-run findings/runbook (kept locally, not pushed)
+first_test/

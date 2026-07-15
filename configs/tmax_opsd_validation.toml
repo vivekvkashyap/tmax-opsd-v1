@@ -14,7 +14,13 @@
 # per-task Docker image), so this needs network + a Prime API key.
 
 max_steps = 5            # 3–5 step validation. Real run: 300 (tmax_opsd_pure.toml).
-seq_len = 16384          # lighter than the faithful 32768, to fit 2xA100 comfortably and run fast.
+seq_len = 8192           # trainer sequence length. 16384 OOM'd a 4B in fp32 on one 80GB A100
+                         # (weights+grads ~32GB + ref_kl LM-head logits at 16k tokens > 80GB).
+                         # 8192 fits comfortably. optimization_dtype stays fp32 (paper: crucial for Qwen3.5).
+
+# Reduce trainer-GPU memory fragmentation (the OOM left "reserved-but-unallocated" memory).
+[env_vars]
+PYTORCH_CUDA_ALLOC_CONF = "expandable_segments:True"
 
 [model]
 name = "Qwen/Qwen3.5-4B"  # post-trained 4B; tool-calls out of the box.
@@ -41,6 +47,9 @@ max_completion_tokens = 4096   # per-turn cap. Real run: 16384. Reduced to bound
 # id INSIDE taskset -> verifiers dispatches to TMaxTasksetConfig (v1 path).
 # require_demo selects only the 9,959 hinted tasks so OPSD never hits a null demo.
 # runtime.type = "prime" -> each rollout runs in a Prime sandbox (all-Prime).
+# max_total_tokens caps the rollout below max_model_len (12288) so OPSD's hint+rollout
+# prefill-score always fits (a full-length rollout + hint was overflowing 12288).
+max_total_tokens = 8192
 taskset = { id = "tmax_opsd_v1", require_demo = true, verifier_timeout = 600.0 }
 harness = { max_steps = 32, command_timeout = 120.0, runtime = { type = "prime" } }  # real max_steps: 64.
 
@@ -52,17 +61,25 @@ num_examples = 8         # tiny eval set; watch `solved` / `pass_fraction`.
 max_completion_tokens = 4096
 
 [[orchestrator.eval.env]]
+max_total_tokens = 8192
 taskset = { id = "tmax_opsd_v1", require_demo = true, verifier_timeout = 600.0 }
 harness = { max_steps = 32, command_timeout = 120.0, runtime = { type = "prime" } }
 
 [deployment]
 type = "single_node"
-num_train_gpus = 1       # 1 GPU trains, 1 serves inference -> 2x A100 80GB total.
-num_infer_gpus = 1
+num_train_gpus = 2       # FSDP shards the fp32 4B across 2 GPUs (~16GB each) -> no OOM.
+num_infer_gpus = 2       # inference tensor-parallel across 2 GPUs. -> 4x A100 80GB total.
+
+# Weight sync trainer->inference via disk, NOT nccl. The nccl path errored on this
+# multi-GPU pod ('Worker' has no attribute 'nccl_broadcast_receiver'); filesystem sidesteps it.
+[weight_broadcast]
+type = "filesystem"
 
 [trainer.optim]
 lr = 1e-6                # TMax paper LR (constant).
 
 [inference]
 gpu_memory_utilization = 0.85
-max_model_len = 16384    # = seq_len; keeps the vLLM KV cache bounded on one A100.
+
+[inference.model]
+max_model_len = 12288    # >= seq_len (8192) + hint tokens, so OPSD's hint+rollout prefill-score fits.
