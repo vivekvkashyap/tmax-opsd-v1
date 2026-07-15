@@ -25,7 +25,13 @@ COLUMNS = [
     "task_id", "image", "description", "scenario", "domain", "skill_type",
     "primitive_skills", "task_complexity", "command_complexity",
     "verifier_kind", "oracle_path", "agent_entry_point", "truth", "test_script",
+    "demo",
 ]
+
+# Sidecar of OPSD hints (task_id -> demo), assembled from data/demos/ by
+# scripts/hintgen/assemble_demos.py. Left-joined at build time; tasks with no
+# hint get demo=None. Looked up next to the build (data_dir/demos.parquet).
+DEMOS_FILENAME = "demos.parquet"
 
 EXPECTED_ROWS = 14601
 
@@ -38,7 +44,13 @@ def fetch(url: str, dest: Path) -> Path:
     return dest
 
 
-def build_rows(taxonomy_rows: list[dict], image_by_task: dict, test_scripts: dict) -> list[dict]:
+def build_rows(
+    taxonomy_rows: list[dict],
+    image_by_task: dict,
+    test_scripts: dict,
+    demos_by_task: dict | None = None,
+) -> list[dict]:
+    demos_by_task = demos_by_task or {}
     rows = []
     for t in taxonomy_rows:
         task_id = t["task_id"]
@@ -62,8 +74,20 @@ def build_rows(taxonomy_rows: list[dict], image_by_task: dict, test_scripts: dic
             "agent_entry_point": info.agent_entry_point,
             "truth": t.get("truth") or "",
             "test_script": test_scripts[task_id],
+            "demo": demos_by_task.get(task_id),
         })
     return rows
+
+
+def load_demos(data_dir: Path) -> dict:
+    """Load the OPSD hint sidecar (data_dir/demos.parquet) as task_id -> demo.
+    Returns {} if absent (tasks then get demo=None; OPSD envs must select the
+    hinted subset). For a Hub-pulled env, host demos.parquet and fetch it here."""
+    demos_path = data_dir / DEMOS_FILENAME
+    if not demos_path.exists():
+        return {}
+    table = pq.read_table(demos_path, columns=["task_id", "demo"])
+    return dict(zip(table.column("task_id").to_pylist(), table.column("demo").to_pylist()))
 
 
 def build_dataset(out_path: Path, data_dir: Path | None = None) -> Path:
@@ -91,7 +115,8 @@ def build_dataset(out_path: Path, data_dir: Path | None = None) -> Path:
         if (d / "tests" / "test.sh").is_file()
     }
 
-    rows = build_rows(taxonomy, image_by_task, test_scripts)
+    demos_by_task = load_demos(data_dir)
+    rows = build_rows(taxonomy, image_by_task, test_scripts, demos_by_task)
     if len(rows) != EXPECTED_ROWS:
         raise AssertionError(f"expected {EXPECTED_ROWS} rows, got {len(rows)}")
 

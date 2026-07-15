@@ -41,6 +41,10 @@ class TMaxTasksetConfig(TasksetConfig):
     """Optional task_id subset (None = all 14,601)."""
     blocklist_path: Path | None = None
     """Optional file of task_ids to skip, one per line (audits/blocklist_dead_tasks.txt)."""
+    require_demo: bool = False
+    """When True, drop tasks whose `demo` (OPSD hint) is empty. Set this on an
+    OPSD env entry so only hinted tasks are routed to it (opsd raises on a
+    missing demo). Leave False for GRPO, which needs no hint."""
     verifier_timeout: float = 600.0
     """Finalize (verifier) timeout. TMax's own env enforced a 600s floor; task.toml's
     120s false-zeros fuzz verifiers (experiment.md F0.5/F1.3). Do not lower."""
@@ -171,6 +175,8 @@ class TMaxTaskset(Taskset[TMaxTask, TMaxTasksetConfig]):
                 continue
             if wanted is not None and row["task_id"] not in wanted:
                 continue
+            if self.config.require_demo and not (row.get("demo") if isinstance(row, dict) else None):
+                continue
             data = TMaxData(
                 idx=idx,
                 name=row["task_id"],
@@ -194,6 +200,7 @@ class TMaxTaskset(Taskset[TMaxTask, TMaxTasksetConfig]):
                 agent_entry_point=row["agent_entry_point"],
                 truth=row["truth"],
                 test_script=row["test_script"],
+                demo=row.get("demo"),
             )
             yield TMaxTask(data, self.config.task)
             idx += 1

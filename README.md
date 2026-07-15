@@ -58,21 +58,32 @@ offensive-security-framed tasks that Claude's safety filter declines — those s
 
 ### Wiring hints into a training run
 
-The env exposes the hint via `TMaxData.demo`, which OPSD reads through its `demo_key`. In an
-orchestrator config, point the OPSD env entry at this field and restrict it to hinted tasks:
+Hint support is built in. `build.py` left-joins the hints into a `demo` column (from
+`data/demos.parquet`, assembled from `data/demos/*.md`), `TMaxData` carries the `demo` field, and
+the taskset config exposes `require_demo` to select only hinted tasks. OPSD reads the hint through
+its `demo_key`.
 
-```toml
-[[orchestrator.train.env]]
-id = "tmax-opsd-v1"                                 # GRPO — all tasks
+One-time: assemble the sidecar, then (re)build the dataset:
 
-[[orchestrator.train.env]]
-id = "tmax-opsd-v1"
-algo = { type = "opsd", demo_key = "demo" }         # OPSD — hinted subset
-tasks = [ ... ]                                      # task_ids that have a demo
+```bash
+uv run python scripts/hintgen/assemble_demos.py   # data/demos/*.md -> data/demos.parquet
+# tasks.parquet is then built with the demo column on next load() (or via build.py)
 ```
 
-To load the hints onto the tasks, join `data/demos/<task_id>.md` into the `demo` column by
-`task_id` at dataset-build time.
+**Pure OPSD** — a ready config is at [`configs/tmax_opsd_pure.toml`](configs/tmax_opsd_pure.toml):
+
+```toml
+[orchestrator.algo]
+type = "opsd"
+demo_key = "demo"
+
+[[orchestrator.train.env]]
+id = "tmax_opsd_v1"
+taskset = { require_demo = true, data_path = "…/data/tasks.parquet" }
+```
+
+**RL + OPSD** — two env entries over the same env: a GRPO entry (all tasks) and an OPSD entry
+(`require_demo = true`), packed into one batch by the trainer.
 
 ### Generating / resuming the hints
 
